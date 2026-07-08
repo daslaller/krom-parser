@@ -6,28 +6,23 @@ import dev.krom.parser.treesitter.ParserEngine
 import kotlinx.serialization.json.*
 
 /**
- * The krom-parser daemon.
- *
- * Reads JSON-RPC style messages from stdin, routes them to the appropriate
- * handler, and writes responses to stdout. All tree-sitter operations
- * happen here — the editor never touches native code.
+ * Language-agnostic krom-parser daemon.
+ * See /api.md for protocol specification.
  */
 class Daemon(
     private val transport: Transport,
     private val engine: ParserEngine,
 ) {
-    private val stateManager = FileStateManager(engine)
+    private val stateManager = FileStateManager(engine, engine.registry())
     private val json = Json { ignoreUnknownKeys = true }
 
-    /**
-     * Main loop — reads messages until stdin closes.
-     */
     fun run() {
-        // Announce ready
-        transport.write(json.encodeToString(
-            Response.serializer(),
-            Response(id = 0, result = JsonPrimitive("krom-parser ready"))
-        ))
+        transport.write(
+            json.encodeToString(
+                Response.serializer(),
+                Response(id = 0, result = JsonPrimitive("krom-parser ready")),
+            ),
+        )
 
         while (true) {
             val raw = transport.read() ?: break
@@ -54,23 +49,31 @@ class Daemon(
     }
 
     private fun route(method: String, params: JsonObject): JsonElement = when (method) {
+        "ping" -> JsonPrimitive("pong")
+        "shutdown" -> JsonPrimitive("ok").also {
+            Thread { Thread.sleep(50); System.exit(0) }.start()
+        }
+        "listLanguages" -> json.encodeToJsonElement(
+            kotlinx.serialization.builtins.ListSerializer(LanguageInfo.serializer()),
+            engine.registry().listLanguages().map { m ->
+                LanguageInfo(
+                    id = m["id"] as String,
+                    name = m["name"] as String,
+                    version = m["version"] as String,
+                    queries = m["queries"] as List<String>,
+                    loaded = m["loaded"] as Boolean,
+                )
+            },
+        )
         "parseFile" -> handleParseFile(params)
         "updateFile" -> handleUpdateFile(params)
         "closeFile" -> handleCloseFile(params)
         "getNodeAtPosition" -> handleGetNodeAtPosition(params)
         "getStructure" -> handleGetStructure(params)
+        "getHighlights" -> handleGetHighlights(params)
         "runQuery" -> handleRunQuery(params)
-        "ping" -> JsonPrimitive("pong")
-        "shutdown" -> {
-            // Clean exit
-            JsonPrimitive("ok").also {
-                Thread { Thread.sleep(50); System.exit(0) }.start()
-            }
-        }
         else -> throw IllegalArgumentException("Unknown method: $method")
     }
-
-    // ── Handlers ────────────────────────────────────────────────────────────
 
     private fun handleParseFile(params: JsonObject): JsonElement {
         val fileId = params.string("fileId")
@@ -78,12 +81,19 @@ class Daemon(
         val languageId = params.string("languageId")
 
         val state = stateManager.parseFile(fileId, content, languageId)
-            ?: return JsonObject(mapOf("success" to JsonPrimitive(false), "error" to JsonPrimitive("Unknown language: $languageId")))
+            ?: return JsonObject(
+                mapOf(
+                    "success" to JsonPrimitive(false),
+                    "error" to JsonPrimitive("Unknown language: $languageId"),
+                ),
+            )
 
-        return JsonObject(mapOf(
-            "success" to JsonPrimitive(true),
-            "version" to JsonPrimitive(state.version),
-        ))
+        return JsonObject(
+            mapOf(
+                "success" to JsonPrimitive(true),
+                "version" to JsonPrimitive(state.version),
+            ),
+        )
     }
 
     private fun handleUpdateFile(params: JsonObject): JsonElement {
@@ -91,55 +101,61 @@ class Daemon(
         val content = params.string("content")
 
         val state = stateManager.updateFile(fileId, content)
-            ?: return JsonObject(mapOf("success" to JsonPrimitive(false), "error" to JsonPrimitive("File not open: $fileId")))
+            ?: return JsonObject(
+                mapOf(
+                    "success" to JsonPrimitive(false),
+                    "error" to JsonPrimitive("File not open: $fileId"),
+                ),
+            )
 
-        return JsonObject(mapOf(
-            "success" to JsonPrimitive(true),
-            "version" to JsonPrimitive(state.version),
-        ))
+        return JsonObject(
+            mapOf(
+                "success" to JsonPrimitive(true),
+                "version" to JsonPrimitive(state.version),
+            ),
+        )
     }
 
     private fun handleCloseFile(params: JsonObject): JsonElement {
-        val fileId = params.string("fileId")
-        stateManager.closeFile(fileId)
+        stateManager.closeFile(params.string("fileId"))
         return JsonPrimitive("ok")
     }
 
     private fun handleGetNodeAtPosition(params: JsonObject): JsonElement {
-        val fileId = params.string("fileId")
-        val line = params.int("line")
-        val column = params.int("column")
-
-        val node = stateManager.getNodeAtPosition(fileId, line, column)
-            ?: return JsonNull
-
+        val node = stateManager.getNodeAtPosition(
+            params.string("fileId"),
+            params.int("line"),
+            params.int("column"),
+        ) ?: return JsonNull
         return json.encodeToJsonElement(NodeInfo.serializer(), node)
     }
 
     private fun handleGetStructure(params: JsonObject): JsonElement {
-        val fileId = params.string("fileId")
-        val symbols = stateManager.getStructure(fileId)
+        val symbols = stateManager.getStructure(params.string("fileId"))
         return json.encodeToJsonElement(
             kotlinx.serialization.builtins.ListSerializer(SymbolInfo.serializer()),
             symbols,
         )
     }
 
+    private fun handleGetHighlights(params: JsonObject): JsonElement {
+        val result = stateManager.getHighlights(params.string("fileId"))
+        return json.encodeToJsonElement(HighlightResult.serializer(), result)
+    }
+
     private fun handleRunQuery(params: JsonObject): JsonElement {
-        val fileId = params.string("fileId")
-        val query = params.string("query")
-        val nodes = stateManager.runQuery(fileId, query)
+        val nodes = stateManager.runQuery(params.string("fileId"), params.string("query"))
         return json.encodeToJsonElement(
             kotlinx.serialization.builtins.ListSerializer(NodeInfo.serializer()),
             nodes,
         )
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
     private fun JsonObject.string(key: String): String =
-        (this[key] as? JsonPrimitive)?.content ?: throw IllegalArgumentException("Missing param: $key")
+        (this[key] as? JsonPrimitive)?.content
+            ?: throw IllegalArgumentException("Missing param: $key")
 
     private fun JsonObject.int(key: String): Int =
-        (this[key] as? JsonPrimitive)?.int ?: throw IllegalArgumentException("Missing param: $key")
+        (this[key] as? JsonPrimitive)?.int
+            ?: throw IllegalArgumentException("Missing param: $key")
 }

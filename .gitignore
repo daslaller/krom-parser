@@ -1,11 +1,20 @@
+# Build outputs
+.kotlin/
 .gradle/
 build/
-.idea/
 *.iml
-.kotlin/
+.idea/
 local.properties
 
-# Native libraries (compiled grammars go here but aren't committed)
-grammars/*.dll
-grammars/*.so
-grammars/*.dylib
+# Go
+go/bin/
+go/vendor/
+
+# Native grammar libraries (built per platform, not committed)
+plugins/*/lib/**/*.so
+plugins/*/lib/**/*.dll
+plugins/*/lib/**/*.dylib
+
+# OS
+.DS_Store
+Thumbs.db

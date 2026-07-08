@@ -1,0 +1,10 @@
+{
+  "class_definition": "class",
+  "function_definition": "function",
+  "method_definition": "method",
+  "enum_definition": "enum",
+  "interface_declaration": "interface",
+  "struct_item": "struct",
+  "field_definition": "field",
+  "lexical_declaration": "variable"
+}
