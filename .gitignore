@@ -1,0 +1,11 @@
+.gradle/
+build/
+.idea/
+*.iml
+.kotlin/
+local.properties
+
+# Native libraries (compiled grammars go here but aren't committed)
+grammars/*.dll
+grammars/*.so
+grammars/*.dylib
