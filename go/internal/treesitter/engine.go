@@ -6,10 +6,14 @@ package treesitter
 #include <dlfcn.h>
 #include <stdlib.h>
 
-static void* load_symbol(const char* lib_path, const char* sym_name) {
-    void* handle = dlopen(lib_path, RTLD_LAZY);
+typedef const void *(*ts_language_fn)(void);
+
+static const void *load_language(const char* lib_path, const char* sym_name) {
+    void* handle = dlopen(lib_path, RTLD_LAZY | RTLD_GLOBAL);
     if (!handle) return NULL;
-    return dlsym(handle, sym_name);
+    ts_language_fn fn = (ts_language_fn)dlsym(handle, sym_name);
+    if (!fn) return NULL;
+    return fn();
 }
 */
 import "C"
@@ -22,13 +26,14 @@ import (
 )
 
 // LoadLanguage dynamically loads a tree-sitter grammar from a shared library.
+// The exported symbol must be a function returning const TSLanguage* (e.g. tree_sitter_python).
 func LoadLanguage(libraryPath, entrySymbol string) (*sitter.Language, error) {
 	cPath := C.CString(libraryPath)
 	cSym := C.CString(entrySymbol)
 	defer C.free(unsafe.Pointer(cPath))
 	defer C.free(unsafe.Pointer(cSym))
 
-	ptr := C.load_symbol(cPath, cSym)
+	ptr := C.load_language(cPath, cSym)
 	if ptr == nil {
 		return nil, fmt.Errorf("failed to load %s from %s", entrySymbol, libraryPath)
 	}
@@ -75,7 +80,9 @@ func (e *Engine) Parse(languageID string, source []byte, oldTree *sitter.Tree) (
 	if !ok {
 		return nil, fmt.Errorf("unknown language: %s", languageID)
 	}
-	e.parser.SetLanguage(lang)
+	if err := e.parser.SetLanguage(lang); err != nil {
+		return nil, fmt.Errorf("incompatible grammar for %s: %w", languageID, err)
+	}
 	tree := e.parser.Parse(source, oldTree)
 	if tree == nil {
 		return nil, fmt.Errorf("parse failed for %s", languageID)

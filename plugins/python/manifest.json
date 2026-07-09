@@ -1,0 +1,14 @@
+{
+  "id": "python",
+  "name": "Python",
+  "version": "0.25.0",
+  "parser": {
+    "entry": "tree_sitter_python",
+    "library": "lib/${platform}/parser.so"
+  },
+  "queries": {
+    "highlights": "highlights.scm",
+    "structure": "structure.scm"
+  },
+  "symbols": "symbols.json"
+}
