@@ -10,6 +10,8 @@ krom-parser is **language-agnostic**. It loads language support from **plugins**
 krom-parser/
   api.md          # Protocol + plugin specification (source of truth)
   plugins/        # Language plugin directory (or point --plugin-dir elsewhere)
+  clients/
+    dart/         # Official Dart client (parser_client package)
   kotlin/         # JVM implementation (ktreesitter)
   go/             # Native implementation (go-tree-sitter) — primary distribution
 ```
@@ -49,7 +51,10 @@ Krom spawns krom-parser as a subprocess alongside LSP servers:
 | LSP server | Diagnostics, completion, rename, format |
 | krom-parser | Syntax tree, highlights, outline, queries |
 
-Both use Content-Length JSON over stdio. A future `parser_client` Dart package will mirror `lsp_client` transport — not LSP semantics.
+Both use Content-Length JSON over stdio. The official Dart client lives at
+[`clients/dart/`](clients/dart/) (`parser_client` package). LSP integration uses
+the separate [`dart_lsp_client`](https://github.com/daslaller/dart_lsp_client)
+package.
 
 ## Branches
 

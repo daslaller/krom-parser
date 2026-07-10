@@ -456,7 +456,7 @@ final process = await Process.start('krom-parser', ['--plugin-dir', pluginPath])
 // Use Content-Length JSON framing — identical to lsp_client transport
 ```
 
-Recommended client package: `parser_client` (mirrors `lsp_client` transport, implements methods above).
+Recommended client package: [`clients/dart/`](../clients/dart/) (`parser_client` on pub) — same Content-Length transport as `dart_lsp_client`, implements the krom-parser methods above.
 
 **Do not** route LSP semantic features through krom-parser. Use LSP for diagnostics, completion, rename, format. Use krom-parser for syntax structure only.
 
